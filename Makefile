@@ -156,13 +156,12 @@ fs.img: mkfs/mkfs README $(UPROGS)
 
 -include kernel/*.d user/*.d
 
-clean: 
-	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
-	*/*.o */*.d */*.asm */*.sym \
-	$K/kernel fs.img \
-	mkfs/mkfs .gdbinit \
-        $U/usys.S \
-	$(UPROGS)
+clean:
+	@echo "Cleaning build artifacts..."
+	@find . -type f \( -name "*.o" -o -name "*.d" -o -name "*.asm" -o -name "*.sym" \) -delete
+	@rm -f $K/kernel fs.img mkfs/mkfs .gdbinit $U/usys.S $(UPROGS)
+	@rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg *.img
+	@echo "Done."
 
 # try to generate a unique GDB port
 GDBPORT = $(shell expr `id -u` % 5000 + 25000)
