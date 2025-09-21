@@ -28,7 +28,7 @@ kexec(char *path, char **argv)
 {
   char *s, *last;
   int i, off;
-  uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase;
+  uint64 argc, sz = PGSIZE, sp, ustack[MAXARG], stackbase;
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
@@ -64,6 +64,8 @@ kexec(char *path, char **argv)
     if(ph.memsz < ph.filesz)
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
+      goto bad;
+    if(ph.vaddr < PGSIZE)
       goto bad;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
