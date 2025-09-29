@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "usyscall.h"
 
 struct cpu cpus[NCPU];
 
@@ -132,6 +133,13 @@ found:
     return 0;
   }
 
+  // Allocate a USYSCALL shared page
+  if((p->usyscall = (struct usyscall*)kalloc()) == 0) {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -139,6 +147,10 @@ found:
     release(&p->lock);
     return 0;
   }
+
+  // set usyscall as pid
+  memset(p->usyscall, 0, PGSIZE);
+  ((int*)p->usyscall)[0] = p->pid;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -158,6 +170,9 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  if(p->usyscall)
+    kfree(p->usyscall);
+  p->usyscall = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -203,6 +218,17 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+  // map USYSCALL page (read-only to user)
+  // USYSCALL is a user VA (defined in memlayout.h).
+  // We map p->usyscall's PA (on riscv xv6 KVA==PA for RAM) with PTE_U|PTE_R (no write/exec).
+  if(mappages(pagetable, USYSCALL, PGSIZE,
+              (uint64)p->usyscall, PTE_W | PTE_R) < 0){
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
   return pagetable;
 }
 
@@ -213,6 +239,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmfree(pagetable, sz);
 }
 
