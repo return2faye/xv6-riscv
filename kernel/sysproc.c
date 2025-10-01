@@ -129,3 +129,39 @@ sys_sysinfo(void)
     return -1;
   return 0;
 }
+
+uint64
+sys_pgaccess(void)
+{
+    uint64 va;
+    int npages;
+    uint64 mask;
+
+    argaddr(0, &va);
+    argint(1, &npages);
+    argaddr(2, &mask);
+
+    // set a upper bound of 
+    // number of pages to check
+    if (npages > 32) {
+      return -1;
+    }
+
+    uint32 res = 0;
+
+    for (int i = 0; i < npages; i++) {
+      pte_t *pte = walk(myproc()->pagetable, va + i*PGSIZE, 0);
+      if (pte == 0) continue;
+
+      if(*pte & PTE_A) {
+        res |= (1 << i);   // 标记第 i 页被访问过
+        *pte &= ~PTE_A;    // 清除 A bit，保证下次能检测到新访问
+      }
+    }
+
+    // 将结果拷贝回用户空间
+  if(copyout(myproc()->pagetable, mask, (char *)&res, sizeof(res)) < 0)
+    return -1;
+
+  return 0;
+}
