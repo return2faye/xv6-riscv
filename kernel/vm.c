@@ -113,6 +113,36 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   }
   return &pagetable[PX(0, va)];
 }
+void 
+_vmprint(pagetable_t pagetable, int level)
+{
+  // there are 512 PTEs in a pagetable
+  for (int i = 0; i < 512; i++) {
+    // == *(pagetable + i)
+    pte_t pte = pagetable[i];
+    // PTE_V is a flag for whether the page table is valid
+    if(pte & PTE_V){
+      for (int j = 0; j < level; j++){
+        if (j) printf(" ");
+        printf("..");
+      }
+      // PA points to the next level pagetable
+      uint64 child = PTE2PA(pte);
+      printf("%d: pte %ld pa %ld\n", i, pte, child);
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        // this PTE points to a lower-level page table.
+        _vmprint((pagetable_t)child, level + 1);
+      }
+    }
+  }
+}
+
+void 
+vmprint(pagetable_t pagetable)
+{
+    printf("page table %p\n", pagetable);
+    _vmprint(pagetable, 1);
+}
 
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
