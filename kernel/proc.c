@@ -148,6 +148,29 @@ found:
     return 0;
   }
 
+  // Create a kernel page table for this process
+  p->k_pagetable = kvmake_o();
+  if(p->k_pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  // Map this process's kernel stack in its kernel page table
+  char *pa = kalloc();
+  if(pa == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  uint64 va = KSTACK((int) (p - proc));
+  if(mappages(p->k_pagetable, va, PGSIZE, (uint64)pa, PTE_R | PTE_W) != 0){
+    kfree(pa);
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
   // set usyscall as pid
   memset(p->usyscall, 0, PGSIZE);
   ((int*)p->usyscall)[0] = p->pid;
@@ -176,6 +199,9 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  if(p->k_pagetable)
+    proc_freekpagetable(p->k_pagetable, (int)(p - proc));
+  p->k_pagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -241,6 +267,18 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmfree(pagetable, sz);
+}
+
+// Free a process's kernel page table and its kernel stack.
+void
+proc_freekpagetable(pagetable_t kpagetable, int proc_index)
+{
+  // First unmap the kernel stack to free its physical page
+  uint64 va = KSTACK(proc_index);
+  uvmunmap(kpagetable, va, 1, 1);
+  
+  // Then free the page table structure without freeing shared kernel pages
+  freewalk_noleaf(kpagetable);
 }
 
 // Set up first user process.
@@ -473,11 +511,20 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        
+        // Switch to the process's kernel page table
+        w_satp(MAKE_SATP(p->k_pagetable));
+        sfence_vma();
+        
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        
+        // Switch back to the global kernel page table
+        kvminithart();
+        
         found = 1;
       }
       release(&p->lock);

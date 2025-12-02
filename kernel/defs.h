@@ -86,6 +86,7 @@ int             growproc(int);
 void            proc_mapstacks(pagetable_t);
 pagetable_t     proc_pagetable(struct proc *);
 void            proc_freepagetable(pagetable_t, uint64);
+void            proc_freekpagetable(pagetable_t, int);
 int             kkill(int);
 int             killed(struct proc*);
 void            setkilled(struct proc*);
@@ -155,6 +156,7 @@ int             uartgetc(void);
 // vm.c
 void            kvminit(void);
 void            kvminithart(void);
+pagetable_t     kvmake_o(void);
 void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
@@ -172,6 +174,7 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             ismapped(pagetable_t, uint64);
 uint64          vmfault(pagetable_t, uint64, int);
 void            vmprint(pagetable_t);
+void            freewalk_noleaf(pagetable_t);
 
 // plic.c
 void            plicinit(void);

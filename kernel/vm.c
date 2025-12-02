@@ -51,6 +51,40 @@ kvmmake(void)
   return kpgtbl;
 }
 
+// Make a Kernel Page Table for only one proc
+pagetable_t
+kvmake_o(void)
+{
+  pagetable_t kpgtbl;
+
+  kpgtbl = (pagetable_t) kalloc();
+  memset(kpgtbl, 0, PGSIZE);
+
+  // uart registers
+  kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+  // virtio mmio disk interface
+  kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // PLIC
+  kvmmap(kpgtbl, PLIC, PLIC, 0x4000000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+  // map kernel data and the physical RAM we'll make use of.
+  kvmmap(kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  // allocate and map a kernel stack for each process.
+  // proc_mapstacks(kpgtbl);
+  
+  return kpgtbl;
+}
+
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
@@ -303,6 +337,26 @@ freewalk(pagetable_t pagetable)
     } else if(pte & PTE_V){
       panic("freewalk: leaf");
     }
+  }
+  kfree((void*)pagetable);
+}
+
+// Free page table pages without freeing the leaf physical pages
+// Used for per-process kernel page tables where physical pages are shared
+void
+freewalk_noleaf(pagetable_t pagetable)
+{
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      freewalk_noleaf((pagetable_t)child);
+      pagetable[i] = 0;
+    }
+    // Note: we don't panic on leaf pages, we just ignore them
+    // since we don't want to free the physical memory they point to
   }
   kfree((void*)pagetable);
 }
